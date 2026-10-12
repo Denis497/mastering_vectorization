@@ -1,30 +1,32 @@
 /*
  * transpose_simd.c -- полуавтоматическая векторизация транспонирования:
- * директивы OpenMP SIMD, restrict, подсказки о выравнивании,
+ * директивы OpenMP SIMD и clang loop, restrict, подсказки о выравнивании,
  * блочный (тайловый) обход и небольшие правки кода.
  *
- * Сборка: gcc -O3 -march=native -fopenmp-simd transpose_simd.c
- * Запуск: ./transpose_simd [N] [повторы]
+ * Сборка: clang -O3 -mcpu=native -fopenmp-simd -DBS=256 -DTS=8 transpose_simd.c
+ * Запуск: ./transpose_simd [N] [повторы] [pad]
  */
 #include "common.h"
 
 #ifndef BS
-#define BS 64               /* размер внешнего блока (тайла) */
+#define BS 256              /* размер внешнего блока (тайла) */
 #endif
-#define TS 8                /* размер микроблока = 8 double = 512 бит */
+#ifndef TS
+#define TS 8                /* размер микроблока: 8 double = 64 байта */
+#endif
 
 /* Этап 1: restrict + omp simd, внутренний цикл пишет B подряд */
-void transpose_simd_rows(const double *restrict a, double *restrict b, size_t n)
+void transpose_simd_rows(const double *restrict a, double *restrict b, size_t n, size_t ld)
 {
     for (size_t j = 0; j < n; j++) {
         #pragma omp simd
         for (size_t i = 0; i < n; i++)
-            b[j * n + i] = a[i * n + j];
+            b[j * ld + i] = a[i * ld + j];
     }
 }
 
 /* Этап 2: блочный обход BS x BS, внутри блока omp simd */
-void transpose_blocked(const double *restrict a, double *restrict b, size_t n)
+void transpose_blocked(const double *restrict a, double *restrict b, size_t n, size_t ld)
 {
     for (size_t ii = 0; ii < n; ii += BS)
         for (size_t jj = 0; jj < n; jj += BS) {
@@ -33,59 +35,57 @@ void transpose_blocked(const double *restrict a, double *restrict b, size_t n)
             for (size_t j = jj; j < je; j++) {
                 #pragma omp simd
                 for (size_t i = ii; i < ie; i++)
-                    b[j * n + i] = a[i * n + j];
+                    b[j * ld + i] = a[i * ld + j];
             }
         }
 }
 
 /*
- * Микроблок 8x8 с размерами-константами: оба цикла полностью
- * разворачиваются, и SLP-векторизатор может собрать запись строки B
- * целым 512-битным вектором.
+ * Микроблок TS x TS с размерами-константами: оба цикла полностью
+ * разворачиваются, после чего компилятор объединяет соседние обращения
+ * к строкам A и B (clang делает из них парные команды ldp/stp).
  */
-static inline void tile8(const double *restrict a, double *restrict b, size_t n)
+static inline void tile(const double *restrict a, double *restrict b, size_t ld)
 {
-    #pragma GCC unroll 8
+    #pragma clang loop unroll(full)
     for (int j = 0; j < TS; j++) {
-        #pragma GCC unroll 8
+        #pragma clang loop unroll(full)
         for (int i = 0; i < TS; i++)
-            b[j * n + i] = a[i * n + j];
+            b[j * ld + i] = a[i * ld + j];
     }
 }
 
-/* Этап 3: двухуровневые блоки (BS x BS из микроблоков 8x8) */
-void transpose_tiled8(const double *restrict a, double *restrict b, size_t n)
+/* Этап 3: двухуровневые блоки (BS x BS из микроблоков TS x TS) */
+void transpose_tiled(const double *restrict a, double *restrict b, size_t n, size_t ld)
 {
     a = __builtin_assume_aligned(a, ALIGN);
     b = __builtin_assume_aligned(b, ALIGN);
-    size_t n8 = n / TS * TS;
-    for (size_t ii = 0; ii < n8; ii += BS)
-        for (size_t jj = 0; jj < n8; jj += BS) {
-            size_t ie = ii + BS < n8 ? ii + BS : n8;
-            size_t je = jj + BS < n8 ? jj + BS : n8;
+    size_t nt = n / TS * TS;
+    for (size_t ii = 0; ii < nt; ii += BS)
+        for (size_t jj = 0; jj < nt; jj += BS) {
+            size_t ie = ii + BS < nt ? ii + BS : nt;
+            size_t je = jj + BS < nt ? jj + BS : nt;
             for (size_t i = ii; i < ie; i += TS)
                 for (size_t j = jj; j < je; j += TS)
-                    tile8(a + i * n + j, b + j * n + i, n);
+                    tile(a + i * ld + j, b + j * ld + i, ld);
         }
-    /* хвосты, если n не кратно 8 */
+    /* хвосты, если n не кратно TS */
     for (size_t i = 0; i < n; i++)
-        for (size_t j = (i < n8 ? n8 : 0); j < n; j++) {
-            b[j * n + i] = a[i * n + j];
-        }
+        for (size_t j = (i < nt ? nt : 0); j < n; j++)
+            b[j * ld + i] = a[i * ld + j];
 }
 
 int main(int argc, char **argv)
 {
     size_t n = arg_n(argc, argv, 8192);
     int reps = arg_reps(argc, argv, 5);
-    if (n % TS)
-        printf("внимание: N не кратно %d, строки не выровнены\n", TS);
-    double *a = alloc_matrix(n), *b = alloc_matrix(n);
-    fill_matrix(a, n);
-    printf("N = %zu, BS = %d\n", n, BS);
-    bench("simd_rows (restrict+simd)", transpose_simd_rows, a, b, n, reps);
-    bench("blocked (BSxBS + simd)", transpose_blocked, a, b, n, reps);
-    bench("tiled8 (BSxBS, 8x8 SLP)", transpose_tiled8, a, b, n, reps);
+    size_t ld = arg_ld(argc, argv, n);
+    double *a = alloc_matrix(n, ld), *b = alloc_matrix(n, ld);
+    fill_matrix(a, n, ld);
+    printf("N = %zu, BS = %d, TS = %d\n", n, BS, TS);
+    bench("simd_rows (restrict+simd)", transpose_simd_rows, a, b, n, ld, reps);
+    bench("blocked (BSxBS + simd)", transpose_blocked, a, b, n, ld, reps);
+    bench("tiled (BSxBS, TSxTS SLP)", transpose_tiled, a, b, n, ld, reps);
     free(a);
     free(b);
     return 0;

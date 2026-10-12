@@ -1,0 +1,130 @@
+===== Система =====
+2026-10-12 22:45
+ProductName:		macOS
+ProductVersion:		27.0
+BuildVersion:		26A428
+Apple M4 Pro
+hw.ncpu: 12
+hw.memsize: 25769803776
+hw.cachelinesize: 128
+hw.pagesize: 16384
+hw.perflevel0.physicalcpu: 8
+hw.perflevel0.l1dcachesize: 131072
+hw.perflevel0.l2cachesize: 16777216
+hw.perflevel1.physicalcpu: 4
+hw.perflevel1.l1dcachesize: 65536
+hw.perflevel1.l2cachesize: 4194304
+AdvSIMD (NEON): 1, SVE: 0, SME: 1
+Now drawing from 'AC Power'
+Apple clang version 17.0.0 (clang-1700.3.19.1)
+Target: arm64-apple-darwin27.0.0
+на каждую конфигурацию 5 запуска по 7 повторов, min -- наименьшее время
+
+===== 1. Исходная программа, разные ключи компилятора =====
+[-O0] naive                         min   0.2652 s  avg   0.2755 s    4.05 GB/s  ok
+[-O1] naive                         min   0.2889 s  avg   0.3049 s    3.72 GB/s  ok
+[-O2] naive                         min   0.2934 s  avg   0.2975 s    3.66 GB/s  ok
+[-O3] naive                         min   0.2932 s  avg   0.2967 s    3.66 GB/s  ok
+[-O3 -mcpu=native] naive                         min   0.2932 s  avg   0.2995 s    3.66 GB/s  ok
+[-O3 -mcpu=apple-m4] naive                         min   0.2934 s  avg   0.2964 s    3.66 GB/s  ok
+[-O3 -ffast-math -mcpu=native -funroll-loops] naive                         min   0.2937 s  avg   0.2962 s    3.66 GB/s  ok
+[-O0] naive                         min   0.2152 s  avg   0.2231 s    4.76 GB/s  ok
+[-O1] naive                         min   0.1232 s  avg   0.1286 s    8.31 GB/s  ok
+[-O2] naive                         min   0.1215 s  avg   0.1255 s    8.43 GB/s  ok
+[-O3] naive                         min   0.1212 s  avg   0.1233 s    8.45 GB/s  ok
+[-O3 -mcpu=native] naive                         min   0.1209 s  avg   0.1235 s    8.47 GB/s  ok
+[-O3 -mcpu=apple-m4] naive                         min   0.1211 s  avg   0.1236 s    8.45 GB/s  ok
+[-O3 -ffast-math -mcpu=native -funroll-loops] naive                         min   0.1204 s  avg   0.1222 s    8.50 GB/s  ok
+
+===== 2. Полуавтоматическая векторизация (-O3 -mcpu=native -fopenmp-simd, BS=256, TS=8) =====
+--- N=8192, pad=0
+N = 8192, BS = 256, TS = 8
+simd_rows (restrict+simd)     min   0.1883 s  avg   0.1931 s    5.70 GB/s  ok
+blocked (BSxBS + simd)        min   0.0771 s  avg   0.0779 s   13.94 GB/s  ok
+tiled (BSxBS, TSxTS SLP)      min   0.0699 s  avg   0.0706 s   15.37 GB/s  ok
+--- N=8192, pad=8
+N = 8192, BS = 256, TS = 8
+simd_rows (restrict+simd)     min   0.1563 s  avg   0.2214 s    6.87 GB/s  ok
+blocked (BSxBS + simd)        min   0.0731 s  avg   0.0740 s   14.69 GB/s  ok
+tiled (BSxBS, TSxTS SLP)      min   0.0230 s  avg   0.0252 s   46.68 GB/s  ok
+--- N=8000, pad=0
+N = 8000, BS = 256, TS = 8
+simd_rows (restrict+simd)     min   0.1566 s  avg   0.1905 s    6.54 GB/s  ok
+blocked (BSxBS + simd)        min   0.0650 s  avg   0.0663 s   15.74 GB/s  ok
+tiled (BSxBS, TSxTS SLP)      min   0.0212 s  avg   0.0218 s   48.30 GB/s  ok
+
+===== 3. Ручная векторизация NEON (-O3 -mcpu=native, BS=256) =====
+--- N=8192, pad=0
+N = 8192, BS = 256
+memcpy (эталон)         min   0.0082 s                    130.26 GB/s  ok
+neon2 (2x2)                   min   0.1481 s  avg   0.1490 s    7.25 GB/s  ok
+neon2_blocked (2x2+BS)        min   0.1446 s  avg   0.1453 s    7.43 GB/s  ok
+neon4_blocked (4x4+BS)        min   0.1005 s  avg   0.1009 s   10.69 GB/s  ok
+neon4_pf (4x4 ldp/stp+pf)     min   0.1008 s  avg   0.1015 s   10.65 GB/s  ok
+neon8_blocked (8x8+BS)        min   0.0963 s  avg   0.0967 s   11.15 GB/s  ok
+--- N=8192, pad=8
+N = 8192, BS = 256
+memcpy (эталон)         min   0.0082 s                    130.18 GB/s  ok
+neon2 (2x2)                   min   0.0523 s  avg   0.0535 s   20.51 GB/s  ok
+neon2_blocked (2x2+BS)        min   0.0265 s  avg   0.0279 s   40.59 GB/s  ok
+neon4_blocked (4x4+BS)        min   0.0235 s  avg   0.0241 s   45.75 GB/s  ok
+neon4_pf (4x4 ldp/stp+pf)     min   0.0245 s  avg   0.0249 s   43.90 GB/s  ok
+neon8_blocked (8x8+BS)        min   0.0247 s  avg   0.0267 s   43.39 GB/s  ok
+--- N=8000, pad=0
+N = 8000, BS = 256
+memcpy (эталон)         min   0.0078 s                    130.71 GB/s  ok
+neon2 (2x2)                   min   0.0517 s  avg   0.0529 s   19.82 GB/s  ok
+neon2_blocked (2x2+BS)        min   0.0259 s  avg   0.0263 s   39.51 GB/s  ok
+neon4_blocked (4x4+BS)        min   0.0230 s  avg   0.0233 s   44.44 GB/s  ok
+neon4_pf (4x4 ldp/stp+pf)     min   0.0256 s  avg   0.0277 s   39.94 GB/s  ok
+neon8_blocked (8x8+BS)        min   0.0232 s  avg   0.0261 s   44.12 GB/s  ok
+
+===== 3a. Векторизация на SME (-O3 -mcpu=apple-m4, BS=256) =====
+--- N=8192, pad=0
+N = 8192, BS = 256, SVL = 512 бит
+sme8 (ZA 8x8+BS)              min   0.0322 s  avg   0.0338 s   33.37 GB/s  ok
+sme16 (4 tiles ZA 16x16+BS)   min   0.0365 s  avg   0.0366 s   29.42 GB/s  ok
+--- N=8192, pad=8
+N = 8192, BS = 256, SVL = 512 бит
+sme8 (ZA 8x8+BS)              min   0.0298 s  avg   0.0313 s   35.98 GB/s  ok
+sme16 (4 tiles ZA 16x16+BS)   min   0.0311 s  avg   0.0313 s   34.50 GB/s  ok
+--- N=8000, pad=0
+N = 8000, BS = 256, SVL = 512 бит
+sme8 (ZA 8x8+BS)              min   0.0281 s  avg   0.0294 s   36.44 GB/s  ok
+sme16 (4 tiles ZA 16x16+BS)   min   0.0330 s  avg   0.0331 s   30.99 GB/s  ok
+
+===== 3b. Исходная программа с дополнением строк (pad=8) =====
+naive                         min   0.1010 s  avg   0.1032 s   10.63 GB/s  ok
+
+===== 4. Подбор размера блока BS (N=8192, pad=8) =====
+BS=16   tiled (BSxBS, TSxTS SLP)      min   0.0416 s  avg   0.0421 s   25.83 GB/s  ok
+BS=16   neon8_blocked (8x8+BS)        min   0.0450 s  avg   0.0459 s   23.86 GB/s  ok
+BS=16   sme8 (ZA 8x8+BS)              min   0.0331 s  avg   0.0351 s   32.39 GB/s  ok
+BS=32   tiled (BSxBS, TSxTS SLP)      min   0.0392 s  avg   0.0396 s   27.41 GB/s  ok
+BS=32   neon8_blocked (8x8+BS)        min   0.0398 s  avg   0.0403 s   26.99 GB/s  ok
+BS=32   sme8 (ZA 8x8+BS)              min   0.0338 s  avg   0.0359 s   31.73 GB/s  ok
+BS=64   tiled (BSxBS, TSxTS SLP)      min   0.0252 s  avg   0.0306 s   42.58 GB/s  ok
+BS=64   neon8_blocked (8x8+BS)        min   0.0260 s  avg   0.0263 s   41.29 GB/s  ok
+BS=64   sme8 (ZA 8x8+BS)              min   0.0312 s  avg   0.0345 s   34.40 GB/s  ok
+BS=128  tiled (BSxBS, TSxTS SLP)      min   0.0247 s  avg   0.0291 s   43.45 GB/s  ok
+BS=128  neon8_blocked (8x8+BS)        min   0.0246 s  avg   0.0281 s   43.72 GB/s  ok
+BS=128  sme8 (ZA 8x8+BS)              min   0.0302 s  avg   0.0340 s   35.56 GB/s  ok
+BS=256  tiled (BSxBS, TSxTS SLP)      min   0.0215 s  avg   0.0243 s   49.87 GB/s  ok
+BS=256  neon8_blocked (8x8+BS)        min   0.0272 s  avg   0.0327 s   39.43 GB/s  ok
+BS=256  sme8 (ZA 8x8+BS)              min   0.0297 s  avg   0.0311 s   36.21 GB/s  ok
+
+===== 5. Подбор микроблока TS полуавтоматической версии (N=8192, pad=8, BS=256) =====
+TS=2  tiled (BSxBS, TSxTS SLP)      min   0.0266 s  avg   0.0293 s   40.30 GB/s  ok
+TS=4  tiled (BSxBS, TSxTS SLP)      min   0.0248 s  avg   0.0262 s   43.29 GB/s  ok
+TS=8  tiled (BSxBS, TSxTS SLP)      min   0.0229 s  avg   0.0240 s   46.98 GB/s  ok
+
+===== 6. Отчёт векторизатора clang =====
+--- transpose_naive.c
+transpose_naive.c:12:9: remark: vectorized loop (vectorization width: 2, interleaved count: 4) [-Rpass=loop-vectorize]
+transpose_naive.c:12:9: remark: the cost-model indicates that vectorization is not beneficial [-Rpass-analysis=loop-vectorize]
+transpose_naive.c:12:9: remark: interleaved loop (interleaved count: 4) [-Rpass=loop-vectorize]
+--- transpose_simd.c
+transpose_simd.c:22:9: remark: vectorized loop (vectorization width: 2, interleaved count: 4) [-Rpass=loop-vectorize]
+transpose_simd.c:36:17: remark: vectorized loop (vectorization width: 2, interleaved count: 4) [-Rpass=loop-vectorize]
+transpose_simd.c:69:17: remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+transpose_simd.c:74:9: remark: vectorized loop (vectorization width: 2, interleaved count: 4) [-Rpass=loop-vectorize]

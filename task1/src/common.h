@@ -10,7 +10,7 @@
 #include <string.h>
 #include <time.h>
 
-#define ALIGN 64            /* выравнивание под строку кэша / вектор AVX-512 */
+#define ALIGN 128           /* выравнивание под строку кэша Apple M4 (128 байт) */
 
 static double wtime(void)
 {
@@ -19,9 +19,15 @@ static double wtime(void)
     return ts.tv_sec + ts.tv_nsec * 1e-9;
 }
 
-static double *alloc_matrix(size_t n)
+/*
+ * Матрица n x n хранится по строкам с ведущей размерностью ld >= n:
+ * элемент (i, j) лежит в p[i * ld + j]. При ld = n это обычное плотное
+ * хранение; ld = n + pad добавляет в конец каждой строки pad пустых
+ * элементов, чтобы шаг между строками не был степенью двойки.
+ */
+static double *alloc_matrix(size_t n, size_t ld)
 {
-    size_t bytes = n * n * sizeof(double);
+    size_t bytes = n * ld * sizeof(double);
     bytes = (bytes + ALIGN - 1) / ALIGN * ALIGN;
     double *p = aligned_alloc(ALIGN, bytes);
     if (!p) {
@@ -31,25 +37,26 @@ static double *alloc_matrix(size_t n)
     return p;
 }
 
-static void fill_matrix(double *a, size_t n)
+static void fill_matrix(double *a, size_t n, size_t ld)
 {
     for (size_t i = 0; i < n; i++)
         for (size_t j = 0; j < n; j++)
-            a[i * n + j] = (double)(i * n + j);
+            a[i * ld + j] = (double)(i * n + j);
 }
 
 /* возвращает число неверных элементов */
-static size_t check_transpose(const double *a, const double *b, size_t n)
+static size_t check_transpose(const double *a, const double *b,
+                              size_t n, size_t ld)
 {
     size_t bad = 0;
     for (size_t i = 0; i < n; i++)
         for (size_t j = 0; j < n; j++)
-            if (b[j * n + i] != a[i * n + j])
+            if (b[j * ld + i] != a[i * ld + j])
                 bad++;
     return bad;
 }
 
-typedef void (*transpose_fn)(const double *a, double *b, size_t n);
+typedef void (*transpose_fn)(const double *a, double *b, size_t n, size_t ld);
 
 /*
  * Запускает fn reps раз и печатает минимальное и среднее время.
@@ -57,18 +64,18 @@ typedef void (*transpose_fn)(const double *a, double *b, size_t n);
  * уже выделены ОС и не влияли на время).
  */
 static double bench(const char *name, transpose_fn fn,
-                    const double *a, double *b, size_t n, int reps)
+                    const double *a, double *b, size_t n, size_t ld, int reps)
 {
     double tmin = 1e30, tsum = 0;
-    memset(b, 0, n * n * sizeof(double));
+    memset(b, 0, n * ld * sizeof(double));
     for (int r = 0; r < reps; r++) {
         double t0 = wtime();
-        fn(a, b, n);
+        fn(a, b, n, ld);
         double t = wtime() - t0;
         if (t < tmin) tmin = t;
         tsum += t;
     }
-    size_t bad = check_transpose(a, b, n);
+    size_t bad = check_transpose(a, b, n, ld);
     /* через память проходит 2 * n^2 * 8 байт (чтение A + запись B) */
     double gbs = 2.0 * n * n * sizeof(double) / tmin / 1e9;
     printf("%-28s  min %8.4f s  avg %8.4f s  %6.2f GB/s  %s\n",
@@ -85,6 +92,12 @@ static size_t arg_n(int argc, char **argv, size_t def)
 static int arg_reps(int argc, char **argv, int def)
 {
     return argc > 2 ? atoi(argv[2]) : def;
+}
+
+/* третий аргумент -- дополнение строки pad (ld = n + pad), по умолчанию 0 */
+static size_t arg_ld(int argc, char **argv, size_t n)
+{
+    return n + (argc > 3 ? (size_t)strtoull(argv[3], NULL, 10) : 0);
 }
 
 #endif
