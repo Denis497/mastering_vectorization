@@ -59,7 +59,8 @@ static void sme8_core(const double *a, double *b, size_t n8, size_t ld)
         }
 }
 
-void transpose_sme8(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_sme8(const double *restrict a, double *restrict b,
+                    size_t n, size_t ld)
 {
     size_t n8 = n / 8 * 8;
     sme8_core(a, b, n8, ld);
@@ -104,7 +105,8 @@ static void sme16_core(const double *a, double *b, size_t n16, size_t ld)
         }
 }
 
-void transpose_sme16(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_sme16(const double *restrict a, double *restrict b,
+                     size_t n, size_t ld)
 {
     size_t n16 = n / 16 * 16;
     sme16_core(a, b, n16, ld);

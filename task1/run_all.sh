@@ -57,7 +57,7 @@ echo "AdvSIMD (NEON): $(sysctl -n hw.optional.neon 2>/dev/null || echo 0)," \
      "SME: $(sysctl -n hw.optional.arm.FEAT_SME 2>/dev/null || echo 0)"
 pmset -g batt | head -1
 $CC --version | head -2
-echo "на каждую конфигурацию $RUNS запуска по $REPS повторов, min -- наименьшее время"
+echo "на каждую конфигурацию $RUNS запусков по $REPS повторов, min -- наименьшее время"
 echo
 
 echo "===== 1. Исходная программа, разные ключи компилятора ====="

@@ -14,7 +14,7 @@
 #define BS 256              /* размер внешнего блока (тайла) */
 #endif
 #ifndef PF
-#define PF 8                /* на сколько микроблоков вперёд делать prefetch */
+#define PF 8                /* на сколько микроблоков вперёд prefetch */
 #endif
 
 /* хвосты: элементы, не попавшие в блоки по k (n не кратно k) */
@@ -41,7 +41,8 @@ static inline void kernel2(const double *a, double *b, size_t ld)
 }
 
 /* Этап 1: ядро 2x2, простой обход всей матрицы */
-void transpose_neon2(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_neon2(const double *restrict a, double *restrict b,
+                     size_t n, size_t ld)
 {
     size_t n2 = n / 2 * 2;
     for (size_t i = 0; i < n2; i += 2)
@@ -51,7 +52,8 @@ void transpose_neon2(const double *restrict a, double *restrict b, size_t n, siz
 }
 
 /* Этап 2: ядро 2x2 + блочный обход BS x BS */
-void transpose_neon2_blocked(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_neon2_blocked(const double *restrict a, double *restrict b,
+                             size_t n, size_t ld)
 {
     size_t n2 = n / 2 * 2;
     for (size_t ii = 0; ii < n2; ii += BS)
@@ -90,7 +92,8 @@ static inline void kernel4(const double *a, double *b, size_t ld)
 }
 
 /* Этап 3: ядро 4x4 + блочный обход BS x BS */
-void transpose_neon4_blocked(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_neon4_blocked(const double *restrict a, double *restrict b,
+                             size_t n, size_t ld)
 {
     size_t n4 = n / 4 * 4;
     for (size_t ii = 0; ii < n4; ii += BS)
@@ -131,7 +134,8 @@ static inline void kernel4x2(const double *a, double *b, size_t ld)
 }
 
 /* Этап 4: ядро 4x4 с парными загрузками + блочный обход + prefetch */
-void transpose_neon4_pf(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_neon4_pf(const double *restrict a, double *restrict b,
+                        size_t n, size_t ld)
 {
     size_t n4 = n / 4 * 4;
     for (size_t ii = 0; ii < n4; ii += BS)
@@ -166,7 +170,8 @@ static inline void kernel8(const double *a, double *b, size_t ld)
 }
 
 /* Этап 5: ядро 8x8 + блочный обход BS x BS */
-void transpose_neon8_blocked(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_neon8_blocked(const double *restrict a, double *restrict b,
+                             size_t n, size_t ld)
 {
     size_t n8 = n / 8 * 8;
     for (size_t ii = 0; ii < n8; ii += BS)
@@ -181,12 +186,14 @@ void transpose_neon8_blocked(const double *restrict a, double *restrict b, size_
 }
 
 /* эталон: копирование того же объёма (практический предел памяти) */
-void copy_ref(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void copy_ref(const double *restrict a, double *restrict b,
+              size_t n, size_t ld)
 {
     memcpy(b, a, n * ld * sizeof(double));
 }
 
-static size_t check_copy(const double *a, const double *b, size_t n, size_t ld)
+static size_t check_copy(const double *a, const double *b,
+                         size_t n, size_t ld)
 {
     return memcmp(a, b, n * ld * sizeof(double)) != 0;
 }
@@ -214,10 +221,14 @@ int main(int argc, char **argv)
            check_copy(a, b, n, ld) ? "ОШИБКА" : "ok");
 
     bench("neon2 (2x2)", transpose_neon2, a, b, n, ld, reps);
-    bench("neon2_blocked (2x2+BS)", transpose_neon2_blocked, a, b, n, ld, reps);
-    bench("neon4_blocked (4x4+BS)", transpose_neon4_blocked, a, b, n, ld, reps);
-    bench("neon4_pf (4x4 ldp/stp+pf)", transpose_neon4_pf, a, b, n, ld, reps);
-    bench("neon8_blocked (8x8+BS)", transpose_neon8_blocked, a, b, n, ld, reps);
+    bench("neon2_blocked (2x2+BS)", transpose_neon2_blocked,
+          a, b, n, ld, reps);
+    bench("neon4_blocked (4x4+BS)", transpose_neon4_blocked,
+          a, b, n, ld, reps);
+    bench("neon4_pf (4x4 ldp/stp+pf)", transpose_neon4_pf,
+          a, b, n, ld, reps);
+    bench("neon8_blocked (8x8+BS)", transpose_neon8_blocked,
+          a, b, n, ld, reps);
     free(a);
     free(b);
     return 0;

@@ -3,7 +3,8 @@
  * директивы OpenMP SIMD и clang loop, restrict, подсказки о выравнивании,
  * блочный (тайловый) обход и небольшие правки кода.
  *
- * Сборка: clang -O3 -mcpu=native -fopenmp-simd -DBS=256 -DTS=8 transpose_simd.c
+ * Сборка: clang -O3 -mcpu=native -fopenmp-simd -DBS=256 -DTS=8
+ *         transpose_simd.c
  * Запуск: ./transpose_simd [N] [повторы] [pad]
  */
 #include "common.h"
@@ -16,7 +17,8 @@
 #endif
 
 /* Этап 1: restrict + omp simd, внутренний цикл пишет B подряд */
-void transpose_simd_rows(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_simd_rows(const double *restrict a, double *restrict b,
+                         size_t n, size_t ld)
 {
     for (size_t j = 0; j < n; j++) {
         #pragma omp simd
@@ -26,7 +28,8 @@ void transpose_simd_rows(const double *restrict a, double *restrict b, size_t n,
 }
 
 /* Этап 2: блочный обход BS x BS, внутри блока omp simd */
-void transpose_blocked(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_blocked(const double *restrict a, double *restrict b,
+                       size_t n, size_t ld)
 {
     for (size_t ii = 0; ii < n; ii += BS)
         for (size_t jj = 0; jj < n; jj += BS) {
@@ -45,7 +48,8 @@ void transpose_blocked(const double *restrict a, double *restrict b, size_t n, s
  * разворачиваются, после чего компилятор объединяет соседние обращения
  * к строкам A и B (clang делает из них парные команды ldp/stp).
  */
-static inline void tile(const double *restrict a, double *restrict b, size_t ld)
+static inline void tile(const double *restrict a, double *restrict b,
+                        size_t ld)
 {
     #pragma clang loop unroll(full)
     for (int j = 0; j < TS; j++) {
@@ -56,7 +60,8 @@ static inline void tile(const double *restrict a, double *restrict b, size_t ld)
 }
 
 /* Этап 3: двухуровневые блоки (BS x BS из микроблоков TS x TS) */
-void transpose_tiled(const double *restrict a, double *restrict b, size_t n, size_t ld)
+void transpose_tiled(const double *restrict a, double *restrict b,
+                     size_t n, size_t ld)
 {
     a = __builtin_assume_aligned(a, ALIGN);
     b = __builtin_assume_aligned(b, ALIGN);
@@ -83,7 +88,8 @@ int main(int argc, char **argv)
     double *a = alloc_matrix(n, ld), *b = alloc_matrix(n, ld);
     fill_matrix(a, n, ld);
     printf("N = %zu, BS = %d, TS = %d\n", n, BS, TS);
-    bench("simd_rows (restrict+simd)", transpose_simd_rows, a, b, n, ld, reps);
+    bench("simd_rows (restrict+simd)", transpose_simd_rows,
+          a, b, n, ld, reps);
     bench("blocked (BSxBS + simd)", transpose_blocked, a, b, n, ld, reps);
     bench("tiled (BSxBS, TSxTS SLP)", transpose_tiled, a, b, n, ld, reps);
     free(a);

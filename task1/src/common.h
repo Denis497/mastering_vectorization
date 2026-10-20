@@ -10,7 +10,7 @@
 #include <string.h>
 #include <time.h>
 
-#define ALIGN 128           /* выравнивание под строку кэша Apple M4 (128 байт) */
+#define ALIGN 128           /* выравнивание под строку кэша M4 (128 байт) */
 
 static double wtime(void)
 {
@@ -56,7 +56,8 @@ static size_t check_transpose(const double *a, const double *b,
     return bad;
 }
 
-typedef void (*transpose_fn)(const double *a, double *b, size_t n, size_t ld);
+typedef void (*transpose_fn)(const double *a, double *b,
+                             size_t n, size_t ld);
 
 /*
  * Запускает fn reps раз и печатает минимальное и среднее время.
@@ -64,7 +65,8 @@ typedef void (*transpose_fn)(const double *a, double *b, size_t n, size_t ld);
  * уже выделены ОС и не влияли на время).
  */
 static double bench(const char *name, transpose_fn fn,
-                    const double *a, double *b, size_t n, size_t ld, int reps)
+                    const double *a, double *b, size_t n, size_t ld,
+                    int reps)
 {
     double tmin = 1e30, tsum = 0;
     memset(b, 0, n * ld * sizeof(double));
